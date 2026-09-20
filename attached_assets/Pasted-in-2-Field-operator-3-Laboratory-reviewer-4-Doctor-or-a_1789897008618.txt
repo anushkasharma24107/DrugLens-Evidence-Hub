@@ -1,0 +1,399 @@
+in
+2. Field operator
+3. Laboratory reviewer
+4. Doctor or authorized viewer
+
+Apply role-based permissions:
+- Field operators can create tests and view tests assigned to them.
+- Reviewers can review, approve, reject, or mark tests inconclusive.
+- Doctors can view authorized patient test records.
+- Admins can manage users, test kits, organizations, and audit logs.
+- No user may access records belonging to another organization.
+
+MAIN USER FLOWS
+
+1. Welcome and onboarding
+- Welcome screen with logo, app name, and short explanation.
+- Onboarding screens explaining:
+  - Capture a test-strip image.
+  - Check image quality.
+  - Record a screening result.
+  - Store an auditable evidence record.
+- Add “Get Started” and “Sign In” buttons.
+
+2. Authentication
+Create:
+- Sign up
+- Sign in
+- Forgot password
+- Reset password
+- Email verification
+- Sign out
+- Session restoration
+- Secure storage for authentication tokens
+- Loading and error states
+- Form validation
+- Password visibility toggle
+
+3. Dashboard
+Display:
+- Total tests
+- Tests completed today
+- Pending reviews
+- Inconclusive results
+- Recent tests
+- Quick actions:
+  - New test
+  - Scan QR
+  - Upload image
+  - View history
+- Show different dashboard cards depending on the user role.
+
+4. Patient or subject management
+Create screens to:
+- Add a subject or patient
+- Edit a subject
+- Search subjects
+- View subject history
+- Generate an opaque QR token
+- Revoke or regenerate a QR token
+- Record consent status
+
+Do not place names, medical information, or test results directly in a QR code. QR codes must contain only a random token that is resolved securely by the backend.
+
+5. New test workflow
+Create a multi-step workflow with progress indicators:
+
+Step 1: Select or create subject
+- Search by internal subject ID.
+- Do not display sensitive data unnecessarily.
+
+Step 2: Select test kit
+- Display kit name, manufacturer, version, expiration status, and available drug panels.
+- Prevent selection of expired or disabled kits.
+
+Step 3: Capture or upload image
+- Use the device camera with Expo Camera.
+- Allow gallery upload.
+- Show camera permissions.
+- Include flash control if supported.
+- Include retake and cancel buttons.
+- Display a clear instruction to place the strip inside the guide.
+
+Step 4: Image quality assessment
+Check and display:
+- Blur
+- Brightness
+- Glare
+- Strip position
+- Image resolution
+- Whether the image is usable
+
+For the first version, implement a deterministic mock quality assessor with clearly separated code so it can later be replaced with an on-device AI model. Never present mock analysis as medical-grade AI.
+
+Step 5: Drug panel result
+Display each panel as a card:
+- Drug name
+- Result: negative, presumptive positive, or inconclusive
+- Confidence score
+- Optional measured value
+- Notes
+- Manual override requiring a reason
+
+Never automatically convert a screening result into a confirmed diagnosis.
+
+Step 6: Review
+Show:
+- Subject ID
+- Test kit
+- Operator
+- Date and time
+- Location, only after requesting permission
+- Image preview
+- Image quality score
+- Panel results
+- Notes
+- Consent status
+
+Require the operator to confirm:
+“I understand this is a preliminary screening result.”
+
+Step 7: Save test
+- Save the test through a protected backend API.
+- Show a success screen with a unique test reference number.
+- Generate a shareable report only for authorized roles.
+- Allow the user to start another test or return to the dashboard.
+
+6. Test history
+Create:
+- Search
+- Filters for date, result, kit, reviewer status, and operator
+- Pagination or infinite scrolling
+- Test list cards
+- Test detail screen
+- Timeline of events
+- Empty states
+- Loading skeletons
+- Retry states
+- Offline-created test indicator
+
+7. Test detail screen
+Display:
+- Overall screening result
+- Individual drug-panel results
+- Image evidence
+- Kit information
+- Operator and reviewer
+- Timestamp
+- Location, if collected
+- Review status
+- Notes
+- Audit history
+- SHA-256 image hash if returned by the backend
+
+Provide buttons based on role:
+- Submit for review
+- Approve
+- Reject
+- Mark inconclusive
+- Add review note
+- Export authorized report
+
+8. Offline mode
+Implement a safe offline-first experience:
+- Cache kit profiles and non-sensitive configuration.
+- Allow creation of a draft test offline.
+- Mark drafts as “Pending secure upload.”
+- Synchronize when the connection returns.
+- Handle duplicate submissions.
+- Do not cache sensitive patient records unless absolutely necessary.
+- Clearly show offline and sync status.
+
+9. Notifications
+Add in-app notifications for:
+- Test saved
+- Test submitted for review
+- Test approved
+- Test rejected
+- Synchronization failure
+- Expiring test kits
+
+10. Admin screens
+Create:
+- User list
+- Invite user
+- Change role
+- Disable user
+- Organization settings
+- Test-kit management
+- Kit profile versioning
+- Audit-log viewer
+- Export audit logs for authorized admins
+
+11. Settings
+Create:
+- Profile
+- Organization
+- Notification preferences
+- Privacy and security
+- Biometric unlock if supported
+- Help and support
+- Terms and privacy policy
+- Sign out
+- Delete local data
+
+BACKEND AND DATABASE
+
+Create a separate secure backend API using Node.js, Express, and TypeScript. Use MongoDB Atlas with Mongoose unless a database connection is unavailable; if unavailable, create a clean repository interface and a local development mock repository without hardcoding production data.
+
+Create models for:
+- User
+- Organization
+- Subject
+- TestKit
+- DrugTest
+- DrugPanelResult
+- EvidenceFile
+- Consent
+- AuditLog
+- Notification
+- RefreshToken or session
+
+Required relationships:
+- Every user belongs to an organization.
+- Every subject belongs to an organization.
+- Every drug test belongs to one organization, subject, kit, and operator.
+- Every drug test can contain multiple panel results.
+- Every review action must create an audit-log entry.
+- Evidence files must belong to a drug test.
+
+Required test fields:
+- testReference
+- organizationId
+- subjectId
+- kitId
+- operatorId
+- reviewerId
+- status
+- overallResult
+- panelResults
+- imageQualityScore
+- imageHash
+- evidenceFileUrl
+- notes
+- location
+- consentId
+- createdAt
+- updatedAt
+- reviewedAt
+- syncStatus
+
+RESULT STATUS VALUES
+Use:
+- draft
+- pending_upload
+- submitted
+- under_review
+- approved
+- rejected
+- inconclusive
+- archived
+
+OVERALL RESULT VALUES
+Use:
+- negative
+- presumptive_positive
+- inconclusive
+- not_analyzed
+
+API ENDPOINTS
+
+Authentication:
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/refresh
+- POST /api/auth/logout
+- POST /api/auth/forgot-password
+- POST /api/auth/reset-password
+- GET /api/auth/me
+
+Subjects:
+- GET /api/subjects
+- POST /api/subjects
+- GET /api/subjects/:id
+- PATCH /api/subjects/:id
+- POST /api/subjects/:id/qr-token
+- POST /api/subjects/:id/revoke-qr-token
+
+Test kits:
+- GET /api/test-kits
+- POST /api/test-kits
+- PATCH /api/test-kits/:id
+- POST /api/test-kits/:id/disable
+
+Tests:
+- GET /api/tests
+- POST /api/tests
+- GET /api/tests/:id
+- PATCH /api/tests/:id
+- POST /api/tests/:id/submit
+- POST /api/tests/:id/approve
+- POST /api/tests/:id/reject
+- POST /api/tests/:id/mark-inconclusive
+- POST /api/tests/:id/evidence
+
+Audit:
+- GET /api/audit-logs
+
+SECURITY REQUIREMENTS
+- Use Argon2 or bcrypt for passwords.
+- Use short-lived access tokens and refresh-token rotation.
+- Validate all request bodies with Zod or an equivalent library.
+- Add authentication middleware.
+- Add organization-isolation middleware.
+- Add role-based authorization middleware.
+- Rate-limit login and sensitive endpoints.
+- Use Helmet and secure CORS configuration.
+- Never log passwords, tokens, full patient information, or private image URLs.
+- Use HTTPS in production.
+- Store images in private object storage, not in public URLs.
+- Use signed URLs for authorized evidence access.
+- Add audit logs for create, read, update, review, export, login, logout, and failed authorization.
+- Implement soft deletion for records.
+- Add database indexes for organizationId, subjectId, testReference, createdAt, status, and operatorId.
+- Add generic error messages for authentication failures.
+- Add a privacy notice and consent flow.
+- Clearly label all AI or automated results as preliminary screening assistance.
+
+AI AND IMAGE ANALYSIS
+For this MVP:
+- Create an ImageAnalysisService interface.
+- Add a deterministic MockImageAnalysisService for development.
+- Return image quality values and panel results from mock data only when the user explicitly selects “Demo mode.”
+- Add a placeholder for a future on-device TensorFlow Lite or MediaPipe model.
+- Do not send sensitive images to third-party AI services by default.
+- Do not use a general-purpose AI chatbot to make a medical or legal decision.
+- Always allow “inconclusive” when image quality or analysis is uncertain.
+- Keep the final interpretation explainable and reviewable by a human.
+
+TESTING
+Create:
+- Unit tests for validation and result logic.
+- API tests for authentication.
+- Authorization tests for each role.
+- Tests confirming organization isolation.
+- Tests for expired kits.
+- Tests for duplicate submissions.
+- Tests for offline synchronization.
+- Tests for image-quality rejection.
+- Tests for inconclusive results.
+- Tests for QR token revocation.
+- Tests for audit-log creation.
+- A basic end-to-end test for:
+  sign in → create subject → create test → upload image → save draft → submit for review.
+
+DOCUMENTATION
+Generate:
+- README.md
+- Architecture diagram in Mermaid
+- Database schema documentation
+- API documentation
+- Environment-variable template
+- Local setup instructions
+- Deployment instructions
+- Security checklist
+- Test instructions
+- Known limitations
+- Future AI integration plan
+
+DEMO DATA
+Create clearly labeled demo data:
+- One admin
+- One field operator
+- One reviewer
+- Two demo subjects using fake data only
+- Two demo kits
+- Several demo tests
+
+Never use real patient data. Add a visible “Demo environment” label when demo mode is enabled.
+
+DELIVERY REQUIREMENTS
+Before finishing:
+1. Create the complete project structure.
+2. Install all dependencies.
+3. Run TypeScript checks.
+4. Run linting.
+5. Run unit and API tests.
+6. Fix build errors.
+7. Confirm that navigation works.
+8. Confirm that authentication and role permissions work.
+9. Confirm that unauthorized users cannot access another organization’s data.
+10. Confirm that the app can be previewed using Expo Go.
+11. Create checkpoints after each major milestone.
+12. At the end, explain:
+   - What was built.
+   - Which features are mocked.
+   - Which environment variables are required.
+   - How to run the app.
+   - How to test each role.
+   - What must be completed before real healthcare use.

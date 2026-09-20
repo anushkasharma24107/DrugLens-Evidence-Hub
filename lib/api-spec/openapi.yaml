@@ -2,21 +2,25 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: SafeTest screening evidence management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: dashboard
+  - name: subjects
+  - name: test-kits
+  - name: tests
+  - name: audit
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +28,396 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in to a SafeTest organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Restore the current session
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      security:
+        - bearerAuth: []
+      summary: Get role-aware dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /subjects:
+    get:
+      operationId: listSubjects
+      tags: [subjects]
+      security:
+        - bearerAuth: []
+      summary: List subjects within the current organization
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subjects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subject"
+    post:
+      operationId: createSubject
+      tags: [subjects]
+      security:
+        - bearerAuth: []
+      summary: Create a subject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubjectInput"
+      responses:
+        "201":
+          description: Created subject
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subject"
+  /test-kits:
+    get:
+      operationId: listTestKits
+      tags: [test-kits]
+      security:
+        - bearerAuth: []
+      summary: List enabled test kits
+      responses:
+        "200":
+          description: Test kits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TestKit"
+  /tests:
+    get:
+      operationId: listTests
+      tags: [tests]
+      security:
+        - bearerAuth: []
+      summary: List tests permitted for the current role
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/TestStatus"
+        - in: query
+          name: search
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DrugTest"
+    post:
+      operationId: createTest
+      tags: [tests]
+      security:
+        - bearerAuth: []
+      summary: Create a screening test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DrugTestInput"
+      responses:
+        "201":
+          description: Created test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrugTest"
+  /tests/{id}:
+    get:
+      operationId: getTest
+      tags: [tests]
+      security:
+        - bearerAuth: []
+      summary: Get a test detail record
+      parameters:
+        - $ref: "#/components/parameters/TestId"
+      responses:
+        "200":
+          description: Test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrugTest"
+  /tests/{id}/submit:
+    post:
+      operationId: submitTest
+      tags: [tests]
+      security:
+        - bearerAuth: []
+      summary: Submit a test for laboratory review
+      parameters:
+        - $ref: "#/components/parameters/TestId"
+      responses:
+        "200":
+          description: Submitted test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrugTest"
+  /tests/{id}/review:
+    post:
+      operationId: reviewTest
+      tags: [tests]
+      security:
+        - bearerAuth: []
+      summary: Review a submitted test
+      parameters:
+        - $ref: "#/components/parameters/TestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Reviewed test
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DrugTest"
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      security:
+        - bearerAuth: []
+      summary: List audit events for the organization
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TestId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
+    UserRole:
+      type: string
+      enum: [admin, field_operator, laboratory_reviewer, doctor]
+    TestStatus:
+      type: string
+      enum: [draft, pending_upload, submitted, under_review, approved, rejected, inconclusive, archived]
+    OverallResult:
+      type: string
+      enum: [negative, presumptive_positive, inconclusive, not_analyzed]
+    PanelResult:
+      type: object
+      properties:
+        drug:
+          type: string
+        result:
+          type: string
+          enum: [negative, presumptive_positive, inconclusive]
+        confidence:
+          type: number
+        note:
+          type: string
+      required: [drug, result, confidence]
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        organizationId: { type: string }
+        organizationName: { type: string }
+      required: [id, name, email, role, organizationId, organizationName]
+    LoginRequest:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string }
+      required: [email, password]
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+      required: [accessToken, refreshToken, user]
+    Subject:
+      type: object
+      properties:
+        id: { type: string }
+        subjectCode: { type: string }
+        consentStatus:
+          type: string
+          enum: [pending, granted, revoked]
+        qrStatus:
+          type: string
+          enum: [active, revoked]
+        lastTestAt:
+          type: string
+          format: date-time
+        testCount:
+          type: integer
+      required: [id, subjectCode, consentStatus, qrStatus, testCount]
+    SubjectInput:
+      type: object
+      properties:
+        subjectCode: { type: string }
+        consentStatus:
+          type: string
+          enum: [pending, granted, revoked]
+      required: [subjectCode]
+    TestKit:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        manufacturer: { type: string }
+        version: { type: string }
+        expiresAt: { type: string, format: date }
+        enabled: { type: boolean }
+        panels:
+          type: array
+          items: { type: string }
+      required: [id, name, manufacturer, version, expiresAt, enabled, panels]
+    DrugTest:
+      type: object
+      properties:
+        id: { type: string }
+        testReference: { type: string }
+        subjectId: { type: string }
+        subjectCode: { type: string }
+        kitId: { type: string }
+        kitName: { type: string }
+        operatorName: { type: string }
+        reviewerName: { type: string }
+        status: { $ref: "#/components/schemas/TestStatus" }
+        overallResult: { $ref: "#/components/schemas/OverallResult" }
+        panelResults:
+          type: array
+          items: { $ref: "#/components/schemas/PanelResult" }
+        imageQualityScore: { type: number }
+        imageHash: { type: string }
+        evidenceFileUrl: { type: string }
+        notes: { type: string }
+        location: { type: string }
+        consentStatus: { type: string }
+        syncStatus:
+          type: string
+          enum: [synced, pending_upload, failed]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+      required: [id, testReference, subjectId, subjectCode, kitId, kitName, status, overallResult, panelResults, imageQualityScore, syncStatus, createdAt, updatedAt]
+    DrugTestInput:
+      type: object
+      properties:
+        subjectId: { type: string }
+        kitId: { type: string }
+        overallResult: { $ref: "#/components/schemas/OverallResult" }
+        panelResults:
+          type: array
+          items: { $ref: "#/components/schemas/PanelResult" }
+        imageQualityScore: { type: number }
+        imageHash: { type: string }
+        notes: { type: string }
+        consentStatus: { type: string }
+      required: [subjectId, kitId, overallResult, panelResults, imageQualityScore, consentStatus]
+    ReviewInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [approve, reject, inconclusive]
+        note: { type: string }
+      required: [action]
+    Dashboard:
+      type: object
+      properties:
+        totalTests: { type: integer }
+        completedToday: { type: integer }
+        pendingReviews: { type: integer }
+        inconclusive: { type: integer }
+        recentTests:
+          type: array
+          items: { $ref: "#/components/schemas/DrugTest" }
+      required: [totalTests, completedToday, pendingReviews, inconclusive, recentTests]
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string }
+        action: { type: string }
+        actorName: { type: string }
+        resourceType: { type: string }
+        resourceId: { type: string }
+        occurredAt: { type: string, format: date-time }
+      required: [id, action, actorName, resourceType, resourceId, occurredAt]
 

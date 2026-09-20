@@ -3,6 +3,8 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 const app: Express = express();
 
@@ -25,7 +27,9 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(helmet());
+app.use(cors({ origin: true, credentials: true }));
+app.use("/api/auth/login", rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

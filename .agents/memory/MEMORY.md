@@ -1,0 +1,1 @@
+- [Expo web storage](expo-web-storage.md) — SecureStore’s async methods are native-only in the web preview; guard web storage with an AsyncStorage fallback while retaining SecureStore on device.

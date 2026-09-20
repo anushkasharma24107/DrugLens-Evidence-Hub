@@ -5,7 +5,10 @@
  * SafeTest screening evidence management API
  * OpenAPI spec version: 0.2.0
  */
+import type { User } from './user';
 
-export interface HealthStatus {
-  status: string;
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
 }

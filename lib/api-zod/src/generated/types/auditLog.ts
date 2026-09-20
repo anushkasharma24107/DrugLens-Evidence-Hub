@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface AuditLog {
+  id: string;
+  action: string;
+  actorName: string;
+  resourceType: string;
+  resourceId: string;
+  occurredAt: Date;
 }

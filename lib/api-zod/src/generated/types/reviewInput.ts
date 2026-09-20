@@ -5,7 +5,9 @@
  * SafeTest screening evidence management API
  * OpenAPI spec version: 0.2.0
  */
+import type { ReviewInputAction } from './reviewInputAction';
 
-export interface HealthStatus {
-  status: string;
+export interface ReviewInput {
+  action: ReviewInputAction;
+  note?: string;
 }
