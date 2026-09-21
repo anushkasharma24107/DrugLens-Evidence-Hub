@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/"
-title = "Drug Lense"
+title = "Drug Lens"
 description = "A cross-platform field drug-test evidence app for creating screening records, capturing test-strip evidence, routing reviews, and maintaining an auditable history across organizations."
 version = "1.0.0"
 id = "artifacts/safetest"
