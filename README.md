@@ -1,4 +1,4 @@
-# Drug Lense
+# Drug Lens
 
 Drug Lense is a cross-platform Expo React Native application for field drug-test kit management and auditable preliminary screening records. It helps field operators capture evidence, assess image quality, record panel observations, and route tests to laboratory reviewers without presenting a screening result as a legally confirmed diagnosis.
 
