@@ -1,4 +1,4 @@
-# SafeTest architecture
+# Drug Lense architecture
 
 ```mermaid
 flowchart LR

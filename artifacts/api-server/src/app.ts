@@ -5,8 +5,10 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { DatabaseUnavailableError } from "./db/mongo";
 
 const app: Express = express();
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -34,5 +36,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (error instanceof DatabaseUnavailableError) {
+    return res.status(503).json({ message: "Database unavailable" });
+  }
+  logger.error({ err: error }, "Unhandled API error");
+  return res.status(500).json({ message: "Internal server error" });
+});
 
 export default app;

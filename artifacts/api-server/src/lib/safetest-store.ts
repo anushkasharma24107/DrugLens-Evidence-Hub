@@ -9,14 +9,15 @@ export type User = { id: string; name: string; email: string; role: Role; organi
 export type Subject = { id: string; organizationId: string; subjectCode: string; consentStatus: "pending" | "granted" | "revoked"; qrStatus: "active" | "revoked"; testCount: number; lastTestAt?: string };
 export type TestKit = { id: string; organizationId: string; name: string; manufacturer: string; version: string; expiresAt: string; enabled: boolean; panels: string[] };
 export type PanelResult = { drug: string; result: "negative" | "presumptive_positive" | "inconclusive"; confidence: number; note?: string };
-export type DrugTest = { id: string; organizationId: string; testReference: string; subjectId: string; subjectCode: string; kitId: string; kitName: string; operatorId: string; operatorName: string; reviewerId?: string; reviewerName?: string; status: TestStatus; overallResult: OverallResult; panelResults: PanelResult[]; imageQualityScore: number; imageHash?: string; evidenceFileUrl?: string; notes?: string; location?: string; consentStatus: string; syncStatus: "synced" | "pending_upload" | "failed"; createdAt: string; updatedAt: string; reviewedAt?: string };
+export type ImageLocation = { latitude: number; longitude: number; accuracyMeters?: number };
+export type DrugTest = { id: string; organizationId: string; testReference: string; subjectId: string; subjectCode: string; kitId: string; kitName: string; operatorId: string; operatorName: string; reviewerId?: string; reviewerName?: string; status: TestStatus; overallResult: OverallResult; panelResults: PanelResult[]; imageQualityScore: number; imageHash?: string; evidenceFileUrl?: string; notes?: string; location?: string; imageTakenAt?: string; imageLocation?: ImageLocation; imagePlace?: string; consentStatus: string; syncStatus: "synced" | "pending_upload" | "failed"; createdAt: string; updatedAt: string; reviewedAt?: string };
 export type AuditLog = { id: string; organizationId: string; action: string; actorName: string; resourceType: string; resourceId: string; occurredAt: string };
 
 export const users: User[] = [
-  { id: "user-admin", name: "Avery Morgan", email: "admin@demo.safetest", role: "admin", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
-  { id: "user-operator", name: "Jordan Lee", email: "operator@demo.safetest", role: "field_operator", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
-  { id: "user-reviewer", name: "Dr. Casey Patel", email: "reviewer@demo.safetest", role: "laboratory_reviewer", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
-  { id: "user-doctor", name: "Dr. Sam Rivera", email: "doctor@demo.safetest", role: "doctor", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
+  { id: "user-admin", name: "Avery Morgan", email: "admin@demo.druglense", role: "admin", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
+  { id: "user-operator", name: "Jordan Lee", email: "operator@demo.druglense", role: "field_operator", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
+  { id: "user-reviewer", name: "Dr. Casey Patel", email: "reviewer@demo.druglense", role: "laboratory_reviewer", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
+  { id: "user-doctor", name: "Dr. Sam Rivera", email: "doctor@demo.druglense", role: "doctor", organizationId: "org-northstar", organizationName: "Northstar Community Health", passwordHash: bcrypt.hashSync("demo-password", 10) },
 ];
 
 export const subjects: Subject[] = [
@@ -36,6 +37,7 @@ export const tests: DrugTest[] = [
 
 export const auditLogs: AuditLog[] = [];
 export const sessions = new Map<string, string>();
+export const refreshSessions = new Map<string, string>();
 
 export function publicUser(user: User) {
   const { passwordHash: _passwordHash, ...safe } = user;
@@ -44,8 +46,17 @@ export function publicUser(user: User) {
 
 export function createSession(userId: string) {
   const accessToken = randomUUID();
+  const refreshToken = createHash("sha256").update(`${accessToken}:${randomUUID()}`).digest("hex");
   sessions.set(accessToken, userId);
-  return { accessToken, refreshToken: createHash("sha256").update(`${accessToken}:${randomUUID()}`).digest("hex") };
+  refreshSessions.set(refreshToken, userId);
+  return { accessToken, refreshToken };
+}
+
+export function rotateSession(refreshToken: string) {
+  const userId = refreshSessions.get(refreshToken);
+  if (!userId) return null;
+  refreshSessions.delete(refreshToken);
+  return { userId, ...createSession(userId) };
 }
 
 export function findUserByToken(token: string | undefined) {

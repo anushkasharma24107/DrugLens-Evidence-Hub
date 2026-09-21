@@ -17,7 +17,7 @@ export function LogoMark({ size = 44 }: { size?: number }) {
 
 export function BrandLockup({ compact = false }: { compact?: boolean }) {
   const colors = useColors();
-  return <View style={styles.brandRow}><LogoMark size={compact ? 34 : 46} /><View><Text style={[styles.brandName, { color: colors.foreground, fontSize: compact ? 19 : 23 }]}>SafeTest</Text>{!compact && <Text style={[styles.brandSub, { color: colors.mutedForeground }]}>Screening evidence, handled safely</Text>}</View></View>;
+  return <View style={styles.brandRow}><LogoMark size={compact ? 34 : 46} /><View><Text style={[styles.brandName, { color: colors.foreground, fontSize: compact ? 19 : 23 }]}>Drug Lense</Text>{!compact && <Text style={[styles.brandSub, { color: colors.mutedForeground }]}>Screening evidence, handled safely</Text>}</View></View>;
 }
 
 export function PrimaryButton({ label, onPress, icon, disabled = false, tone = 'primary', style, testID }: { label: string; onPress: () => void; icon?: keyof typeof Feather.glyphMap; disabled?: boolean; tone?: 'primary' | 'secondary' | 'danger'; style?: StyleProp<ViewStyle>; testID?: string }) {

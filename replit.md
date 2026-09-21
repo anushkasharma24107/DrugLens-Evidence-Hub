@@ -1,6 +1,6 @@
-# [Project name]
+# Drug Lense
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Drug Lense is a cross-platform screening evidence app for field drug-test kit management and auditable preliminary results.
 
 ## Run & Operate
 
@@ -30,7 +30,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Drug Lense supports role-aware demo access, subject and kit selection, guided test evidence capture, deterministic demo image-quality review, preliminary panel observations, reviewer actions, audit timelines, offline draft indicators, and organization-scoped API routes.
 
 ## User preferences
 

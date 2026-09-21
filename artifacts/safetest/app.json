@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "SafeTest",
+    "name": "Drug Lense",
     "slug": "safetest",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "safetest",
+    "scheme": "druglense",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false

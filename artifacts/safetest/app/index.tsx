@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeTest, type Role } from '@/context/SafeTestContext';
 import { BrandLockup, Field, Notice, PrimaryButton, Screen, StatusPill } from '@/components/SafeTestUI';
@@ -31,10 +31,11 @@ export default function WelcomeScreen() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  if (isAuthenticated) {
-    router.replace('/(tabs)');
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) router.replace('/(tabs)');
+  }, [isAuthenticated, router]);
+
+  if (isAuthenticated) return null;
 
   const submit = async () => {
     if (!email.includes('@')) { setError('Enter a valid email address.'); return; }
@@ -56,7 +57,7 @@ export default function WelcomeScreen() {
         <View style={welcomeStyles.dots}>{onboarding.map((_, index) => <Pressable key={index} accessibilityLabel={`Onboarding page ${index + 1}`} onPress={() => setPage(index)} style={[welcomeStyles.dot, { backgroundColor: index === page ? colors.primary : colors.border }]} />)}</View>
         <PrimaryButton label={page === onboarding.length - 1 ? 'Get started' : 'Continue'} icon="arrow-right" onPress={() => page === onboarding.length - 1 ? setMode('signin') : setPage(page + 1)} />
         <Pressable onPress={() => setMode('signin')} style={welcomeStyles.signInLink}><Text style={[welcomeStyles.signInText, { color: colors.primary }]}>Already have access? Sign in</Text></Pressable>
-        <Text style={[welcomeStyles.disclaimer, { color: colors.mutedForeground }]}>SafeTest records preliminary screening evidence. It does not provide a legally confirmed diagnosis.</Text>
+        <Text style={[welcomeStyles.disclaimer, { color: colors.mutedForeground }]}>Drug Lense records preliminary screening evidence. It does not provide a legally confirmed diagnosis.</Text>
       </ScrollView>
     </Screen>;
   }
@@ -64,7 +65,7 @@ export default function WelcomeScreen() {
   return <Screen><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView contentContainerStyle={authStyles.content} keyboardShouldPersistTaps="handled">
       <BrandLockup compact />
-      <View style={authStyles.heading}><Text style={[authStyles.title, { color: colors.foreground }]}>{mode === 'forgot' ? 'Recover access' : mode === 'signup' ? 'Create your access' : 'Welcome back'}</Text><Text style={[authStyles.detail, { color: colors.mutedForeground }]}>{mode === 'forgot' ? 'Enter your email and we’ll show the recovery next step.' : 'Use demo access to explore each SafeTest role.'}</Text></View>
+      <View style={authStyles.heading}><Text style={[authStyles.title, { color: colors.foreground }]}>{mode === 'forgot' ? 'Recover access' : mode === 'signup' ? 'Create your access' : 'Welcome back'}</Text><Text style={[authStyles.detail, { color: colors.mutedForeground }]}>{mode === 'forgot' ? 'Enter your email and we’ll show the recovery next step.' : 'Use demo access to explore each Drug Lense role.'}</Text></View>
       {mode === 'forgot' ? <><Field label="Work email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@organization.org" /><PrimaryButton label="Send recovery link" icon="mail" onPress={() => setMode('signin')} /></> : <><Field label="Work email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@organization.org" error={error && !email.includes('@') ? error : undefined} /><View><Field label="Password" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} placeholder="At least 6 characters" error={error && email.includes('@') ? error : undefined} /><Pressable onPress={() => setShowPassword(!showPassword)} style={authStyles.passwordToggle}><Feather name={showPassword ? 'eye-off' : 'eye'} size={17} color={colors.mutedForeground} /><Text style={[authStyles.toggleText, { color: colors.mutedForeground }]}>{showPassword ? 'Hide' : 'Show'}</Text></Pressable></View><View style={authStyles.roleHeading}><Text style={[authStyles.roleTitle, { color: colors.foreground }]}>Explore as</Text><Text style={[authStyles.roleHint, { color: colors.mutedForeground }]}>Your permissions shape the screens you see.</Text></View><View style={authStyles.roleGrid}>{(Object.keys(roleLabels) as Role[]).map((roleOption) => <Pressable key={roleOption} onPress={() => setRole(roleOption)} style={[authStyles.roleChip, { backgroundColor: role === roleOption ? colors.secondary : colors.card, borderColor: role === roleOption ? colors.primary : colors.border }]}><View style={[authStyles.roleRadio, { borderColor: role === roleOption ? colors.primary : colors.border, backgroundColor: role === roleOption ? colors.primary : 'transparent' }]} /> <Text style={[authStyles.roleChipText, { color: colors.foreground }]}>{roleLabels[roleOption]}</Text></Pressable>)}</View><Notice>Demo mode uses fake data only. Use a connected authentication provider and backend configuration before handling real records.</Notice><PrimaryButton label={mode === 'signup' ? 'Create demo account' : 'Sign in'} icon="log-in" onPress={submit} /></>}
       {mode !== 'forgot' && <Pressable onPress={() => setMode('forgot')} style={authStyles.secondaryLink}><Text style={[authStyles.linkText, { color: colors.primary }]}>Forgot password?</Text></Pressable>}
       <View style={authStyles.switchRow}><Text style={[authStyles.switchText, { color: colors.mutedForeground }]}>{mode === 'signup' ? 'Already have an account?' : 'Need an account?'}</Text><Pressable onPress={() => setMode(mode === 'signup' ? 'signin' : 'signup')}><Text style={[authStyles.linkText, { color: colors.primary }]}>{mode === 'signup' ? ' Sign in' : ' Sign up'}</Text></Pressable></View>

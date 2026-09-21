@@ -1,10 +1,11 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeTest, type OverallResult, type PanelResult } from '@/context/SafeTestContext';
+import React, { useRef, useState } from 'react';
+import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeTest, type ImageLocation, type OverallResult, type PanelResult } from '@/context/SafeTestContext';
 import { assessDemoImage, type ImageQualityAssessment } from '@/services/mockImageAnalysis';
 import { Field, GhostButton, Notice, PrimaryButton, Screen, SectionTitle, StatusPill } from '@/components/SafeTestUI';
 import { useColors } from '@/hooks/useColors';
@@ -29,6 +30,11 @@ export default function NewTestScreen() {
   const [panels, setPanels] = useState<PanelResult[]>([]);
   const [notes, setNotes] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
+  const [captureMetadata, setCaptureMetadata] = useState<{ imageTakenAt: string; imageLocation?: ImageLocation; imagePlace?: string } | null>(null);
+  const [captureLoading, setCaptureLoading] = useState(false);
+  const [captureError, setCaptureError] = useState('');
+  const cameraRef = useRef<CameraView>(null);
   const selectedSubject = subjects.find((subject) => subject.id === subjectId);
   const selectedKit = kits.find((kit) => kit.id === kitId);
   const visibleSubjects = subjects.filter((subject) => !subjectSearch || subject.subjectCode.toLowerCase().includes(subjectSearch.toLowerCase()));
@@ -37,33 +43,88 @@ export default function NewTestScreen() {
   if (!canCreate) return <Screen><View style={styles.denied}><View style={[styles.deniedIcon, { backgroundColor: colors.secondary }]}><Feather name="lock" size={25} color={colors.primary} /></View><Text style={[styles.deniedTitle, { color: colors.foreground }]}>Creation access is limited</Text><Text style={[styles.deniedDetail, { color: colors.mutedForeground }]}>Only field operators and admins can create screening tests. Your current role can review or view authorized records.</Text><PrimaryButton label="Return to dashboard" onPress={() => router.back()} icon="arrow-left" /></View></Screen>;
 
   const next = () => {
-    if (step === 0 && !selectedSubject) return;
-    if (step === 1 && (!selectedKit || !selectedKit.enabled || new Date(selectedKit.expiresAt) < new Date())) return;
-    if (step === 2 && !imageUri) return;
-    if (step === 3 && !assessment?.usable) return;
-    if (step === 4 && !confirmed) return;
+    if (step === 0 && !selectedSubject) { setValidationMessage('Select a subject before continuing.'); return; }
+    if (step === 0 && selectedSubject?.consentStatus !== 'granted') { setValidationMessage('Consent must be granted before creating a test.'); return; }
+    if (step === 1 && (!selectedKit || !selectedKit.enabled || new Date(selectedKit.expiresAt) < new Date())) { setValidationMessage('Select an enabled, unexpired test kit.'); return; }
+    if (step === 2 && !imageUri) { setValidationMessage('Capture or choose a test-strip image.'); return; }
+    if (step === 3 && !assessment?.usable) { setValidationMessage('The image must pass quality review before continuing.'); return; }
+    if (step === 4 && !confirmed) { setValidationMessage('Confirm that this is a preliminary screening result.'); return; }
+    setValidationMessage('');
     setStep((current) => Math.min(current + 1, steps.length - 1));
   };
   const back = () => step === 0 ? router.back() : setStep((current) => current - 1);
   const captureFromGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
-    if (!result.canceled && result.assets[0]?.uri) { setImageUri(result.assets[0].uri); setCameraOpen(false); setStep(3); setAssessment(assessDemoImage(result.assets[0].uri)); }
+    if (!result.canceled && result.assets[0]?.uri) await recordCapture(result.assets[0].uri);
   };
   const captureWithCamera = async () => {
-    if (!cameraPermission?.granted) { await requestCameraPermission(); return; }
+    if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission();
+      if (!permission.granted) {
+        setCaptureError('Camera permission was not granted. You can choose an image from the gallery instead.');
+        return;
+      }
+    }
     setCameraOpen(true);
   };
+  const recordCapture = async (uri: string) => {
+    const imageTakenAt = new Date().toISOString();
+    setCaptureLoading(true);
+    setCaptureError('');
+    try {
+      if (Platform.OS === 'web') {
+        setCaptureMetadata({ imageTakenAt, imagePlace: 'Web preview · location unavailable' });
+      } else {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (!permission.granted) {
+          setCaptureMetadata({ imageTakenAt, imagePlace: 'Location permission not granted' });
+          setCaptureError('The image time was recorded, but location permission was not granted.');
+        } else {
+          const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const imageLocation: ImageLocation = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy ?? undefined,
+          };
+          let imagePlace = 'Location captured';
+          try {
+            const address = (await Location.reverseGeocodeAsync({ latitude: imageLocation.latitude, longitude: imageLocation.longitude }))[0];
+            imagePlace = [address?.name, address?.city, address?.region, address?.country].filter(Boolean).join(', ') || imagePlace;
+          } catch {
+            setCaptureError('The image time and coordinates were recorded, but the place name was unavailable.');
+          }
+          setCaptureMetadata({ imageTakenAt, imageLocation, imagePlace });
+        }
+      }
+      setImageUri(uri);
+      setCameraOpen(false);
+      setAssessment(assessDemoImage(uri));
+      setStep(3);
+    } catch {
+      setCaptureMetadata({ imageTakenAt, imagePlace: 'Location unavailable' });
+      setCaptureError('The image was captured, but location could not be recorded.');
+      setImageUri(uri);
+      setCameraOpen(false);
+      setAssessment(assessDemoImage(uri));
+      setStep(3);
+    } finally {
+      setCaptureLoading(false);
+    }
+  };
   const saveTest = () => {
-    if (!selectedSubject || !selectedKit || !assessment) return;
+    if (!selectedSubject || !selectedKit || !assessment || selectedSubject.consentStatus !== 'granted' || !confirmed) {
+      setValidationMessage('Confirm consent, image quality, and the preliminary screening statement before saving.');
+      return;
+    }
     const result: OverallResult = panels.some((panel) => panel.result === 'presumptive_positive') ? 'presumptive_positive' : panels.some((panel) => panel.result === 'inconclusive') ? 'inconclusive' : 'negative';
-    const test = createTest({ subjectId: selectedSubject.id, subjectCode: selectedSubject.subjectCode, kitId: selectedKit.id, kitName: selectedKit.name, reviewerName: undefined, status: 'draft', overallResult: result, panelResults: panels, imageQualityScore: assessment.score, imageHash: 'sha256:demo-image-hash', notes, consentStatus: selectedSubject.consentStatus }, !isOnline);
+    const test = createTest({ subjectId: selectedSubject.id, subjectCode: selectedSubject.subjectCode, kitId: selectedKit.id, kitName: selectedKit.name, reviewerName: undefined, status: 'draft', overallResult: result, panelResults: panels, imageQualityScore: assessment.score, imageHash: 'sha256:demo-image-hash', notes, consentStatus: selectedSubject.consentStatus, imageTakenAt: captureMetadata?.imageTakenAt, imageLocation: captureMetadata?.imageLocation, imagePlace: captureMetadata?.imagePlace }, !isOnline);
     Alert.alert('Test saved', `${test.testReference} is ${isOnline ? 'saved as a draft' : 'queued for secure upload'}.`, [{ text: 'View record', onPress: () => router.replace(`/test/${test.id}`) }, { text: 'Done', onPress: () => router.replace('/(tabs)') }]);
   };
 
   return <Screen><View style={styles.container}><View style={styles.header}><Pressable onPress={back} hitSlop={12}><Feather name="arrow-left" size={22} color={colors.foreground} /></Pressable><View style={styles.headerCopy}><Text style={[styles.kicker, { color: colors.primary }]}>NEW SCREENING TEST</Text><Text style={[styles.headerTitle, { color: colors.foreground }]}>{steps[step]}</Text></View><Text style={[styles.stepCount, { color: colors.mutedForeground }]}>{step + 1}/{steps.length}</Text></View><View style={styles.progressRow}>{steps.map((label, index) => <View key={label} style={styles.progressItem}><View style={[styles.progressLine, { backgroundColor: index <= step ? colors.primary : colors.border }]} /><Text style={[styles.progressLabel, { color: index === step ? colors.primary : colors.mutedForeground }]}>{label}</Text></View>)}</View><ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-    {step === 0 && <View style={styles.stepContent}><Notice>Use an internal subject code. Keep names and unnecessary medical information out of the field workflow.</Notice><Field label="Search subjects" placeholder="Search by internal subject ID" value={subjectSearch} onChangeText={setSubjectSearch} autoCapitalize="characters" /><View style={styles.list}>{visibleSubjects.map((subject) => <Pressable key={subject.id} onPress={() => setSubjectId(subject.id)} style={[styles.option, { backgroundColor: subjectId === subject.id ? colors.secondary : colors.card, borderColor: subjectId === subject.id ? colors.primary : colors.border }]}><View style={[styles.optionIcon, { backgroundColor: subjectId === subject.id ? colors.primary : colors.muted }]}><Feather name="user" size={17} color={subjectId === subject.id ? colors.primaryForeground : colors.mutedForeground} /></View><View style={styles.optionCopy}><Text style={[styles.optionTitle, { color: colors.foreground }]}>{subject.subjectCode}</Text><Text style={[styles.optionDetail, { color: colors.mutedForeground }]}>{subject.testCount} previous tests · Consent {subject.consentStatus}</Text></View>{subjectId === subject.id && <Feather name="check-circle" size={19} color={colors.primary} />}</Pressable>)}</View><View style={styles.createBox}><SectionTitle title="New subject" eyebrow="OPTIONAL" /><Field label="Internal subject ID" placeholder="e.g. ST-6204" value={newSubjectCode} onChangeText={setNewSubjectCode} autoCapitalize="characters" /><GhostButton label="Create and select subject" icon="user-plus" onPress={() => { if (!newSubjectCode.trim()) return; createSubject(newSubjectCode.trim(), 'pending'); setNewSubjectCode(''); Alert.alert('Subject created', 'Consent is pending. Update consent before saving a test.'); }} /></View></View>}
+     {step === 0 && <View style={styles.stepContent}><Notice>Use an internal subject code. Keep names and unnecessary medical information out of the field workflow.</Notice><Field label="Search subjects" placeholder="Search by internal subject ID" value={subjectSearch} onChangeText={setSubjectSearch} autoCapitalize="characters" /><View style={styles.list}>{visibleSubjects.map((subject) => <Pressable key={subject.id} onPress={() => { setSubjectId(subject.id); setValidationMessage(''); }} style={[styles.option, { backgroundColor: subjectId === subject.id ? colors.secondary : colors.card, borderColor: subjectId === subject.id ? colors.primary : colors.border }]}><View style={[styles.optionIcon, { backgroundColor: subjectId === subject.id ? colors.primary : colors.muted }]}><Feather name="user" size={17} color={subjectId === subject.id ? colors.primaryForeground : colors.mutedForeground} /></View><View style={styles.optionCopy}><Text style={[styles.optionTitle, { color: colors.foreground }]}>{subject.subjectCode}</Text><Text style={[styles.optionDetail, { color: colors.mutedForeground }]}>{subject.testCount} previous tests · Consent {subject.consentStatus}</Text></View>{subjectId === subject.id && <Feather name="check-circle" size={19} color={colors.primary} />}</Pressable>)}</View><View style={styles.createBox}><SectionTitle title="New subject" eyebrow="OPTIONAL" /><Field label="Internal subject ID" placeholder="e.g. ST-6204" value={newSubjectCode} onChangeText={setNewSubjectCode} autoCapitalize="characters" /><GhostButton label="Create and select subject" icon="user-plus" onPress={() => { if (!newSubjectCode.trim()) { setValidationMessage('Enter an internal subject ID first.'); return; } const created = createSubject(newSubjectCode.trim(), 'pending'); setSubjectId(created.id); setNewSubjectCode(''); setValidationMessage('Consent is pending. Update consent before saving a test.'); }} /></View>{validationMessage && <Notice tone="warning">{validationMessage}</Notice>}</View>}
     {step === 1 && <View style={styles.stepContent}><Notice>Expired or disabled kits are unavailable for selection. Version and panel coverage are recorded with the evidence.</Notice><View style={styles.list}>{kits.map((kit) => { const disabled = !kit.enabled || new Date(kit.expiresAt) < new Date(); return <Pressable disabled={disabled} key={kit.id} onPress={() => setKitId(kit.id)} style={[styles.kitCard, { opacity: disabled ? 0.45 : 1, backgroundColor: kitId === kit.id ? colors.secondary : colors.card, borderColor: kitId === kit.id ? colors.primary : colors.border }]}><View style={styles.kitRow}><View style={[styles.optionIcon, { backgroundColor: kitId === kit.id ? colors.primary : colors.muted }]}><Feather name="package" size={17} color={kitId === kit.id ? colors.primaryForeground : colors.mutedForeground} /></View><View style={styles.optionCopy}><Text style={[styles.optionTitle, { color: colors.foreground }]}>{kit.name}</Text><Text style={[styles.optionDetail, { color: colors.mutedForeground }]}>{kit.manufacturer} · {kit.version}</Text></View><StatusPill label={disabled ? 'Unavailable' : 'Available'} tone={disabled ? 'red' : kitId === kit.id ? 'teal' : 'green'} /></View><Text style={[styles.panelText, { color: colors.mutedForeground }]}>Panels: {kit.panels.join(' · ')}</Text><Text style={[styles.panelText, { color: colors.mutedForeground }]}>Expires {kit.expiresAt}</Text></Pressable>; })}</View></View>}
-    {step === 2 && <View style={styles.stepContent}><Notice>Place the complete strip inside the guide. Avoid glare, shadows, and cropped control lines.</Notice>{cameraOpen ? <View style={styles.cameraWrap}>{cameraPermission?.granted ? <CameraView style={styles.camera} facing="back" flash={flash ? 'on' : 'off'} onCameraReady={() => undefined}><View style={styles.cameraGuide}><View style={styles.guideCorner} /><Text style={styles.guideText}>Align strip inside guide</Text></View><View style={styles.cameraControls}><Pressable onPress={() => setFlash(!flash)} style={styles.cameraButton}><Feather name={flash ? 'sun' : 'moon'} size={20} color="#ffffff" /></Pressable><Pressable onPress={async () => { const ref = (globalThis as unknown as { __cameraRef?: { takePictureAsync: () => Promise<{ uri?: string }> } }).__cameraRef; if (ref) { const photo = await ref.takePictureAsync(); if (photo.uri) { setImageUri(photo.uri); setCameraOpen(false); setAssessment(assessDemoImage(photo.uri)); setStep(3); } } else { setImageUri('demo://captured-strip'); setCameraOpen(false); setAssessment(assessDemoImage('demo://captured-strip')); setStep(3); } }} style={styles.captureButton}><View style={styles.captureInner} /></Pressable><Pressable onPress={() => setCameraOpen(false)} style={styles.cameraButton}><Feather name="x" size={22} color="#ffffff" /></Pressable></View></CameraView> : <View style={styles.cameraPermission}><Feather name="camera-off" size={26} color={colors.primary} /><Text style={[styles.permissionTitle, { color: colors.foreground }]}>Camera permission needed</Text><Text style={[styles.permissionDetail, { color: colors.mutedForeground }]}>Allow access to capture a test-strip image on this device.</Text><PrimaryButton label="Allow camera" icon="camera" onPress={captureWithCamera} /></View>}</View> : <View style={styles.captureOptions}><Pressable onPress={captureWithCamera} style={[styles.captureOption, { backgroundColor: colors.primary }]}><Feather name="camera" size={24} color={colors.primaryForeground} /><Text style={styles.captureOptionText}>Open camera</Text><Text style={styles.captureOptionDetail}>Capture a new image</Text></Pressable><Pressable onPress={captureFromGallery} style={[styles.captureOption, { backgroundColor: colors.secondary }]}><Feather name="image" size={24} color={colors.primary} /><Text style={[styles.captureOptionText, { color: colors.foreground }]}>Choose image</Text><Text style={[styles.captureOptionDetail, { color: colors.mutedForeground }]}>Use a saved capture</Text></Pressable></View>}{imageUri && <View style={styles.previewBox}>{imageUri.startsWith('demo://') ? <View style={[styles.demoImage, { backgroundColor: colors.secondary }]}><Feather name="image" size={28} color={colors.primary} /><Text style={[styles.demoImageText, { color: colors.primary }]}>Captured demo image</Text></View> : <Image source={{ uri: imageUri }} style={styles.previewImage} />}<GhostButton label="Retake" icon="refresh-cw" onPress={() => { setImageUri(''); setCameraOpen(false); setStep(2); }} /></View>}</View>}
+     {step === 2 && <View style={styles.stepContent}><Notice>Place the complete strip inside the guide. Avoid glare, shadows, and cropped control lines.</Notice>{cameraOpen ? <View style={styles.cameraWrap}>{cameraPermission?.granted ? <CameraView ref={cameraRef} style={styles.camera} facing="back" flash={flash ? 'on' : 'off'} onCameraReady={() => undefined}><View style={styles.cameraGuide}><View style={styles.guideCorner} /><Text style={styles.guideText}>Align strip inside guide</Text></View><View style={styles.cameraControls}><Pressable onPress={() => setFlash(!flash)} style={styles.cameraButton}><Feather name={flash ? 'sun' : 'moon'} size={20} color="#ffffff" /></Pressable><Pressable disabled={captureLoading} onPress={async () => { const photo = await cameraRef.current?.takePictureAsync(); if (photo?.uri) await recordCapture(photo.uri); else setCaptureError('The camera could not capture an image. Try again or choose an image from the gallery.'); }} style={styles.captureButton}><View style={styles.captureInner} /></Pressable><Pressable onPress={() => setCameraOpen(false)} style={styles.cameraButton}><Feather name="x" size={22} color="#ffffff" /></Pressable></View></CameraView> : <View style={styles.cameraPermission}><Feather name="camera-off" size={26} color={colors.primary} /><Text style={[styles.permissionTitle, { color: colors.foreground }]}>Camera permission needed</Text><Text style={[styles.permissionDetail, { color: colors.mutedForeground }]}>Allow access to capture a test-strip image on this device.</Text><PrimaryButton label="Allow camera" icon="camera" onPress={captureWithCamera} /></View>}</View> : <View style={styles.captureOptions}><Pressable disabled={captureLoading} onPress={captureWithCamera} style={[styles.captureOption, { backgroundColor: colors.primary }]}><Feather name="camera" size={24} color={colors.primaryForeground} /><Text style={styles.captureOptionText}>Open camera</Text><Text style={styles.captureOptionDetail}>Capture a new image</Text></Pressable><Pressable disabled={captureLoading} onPress={captureFromGallery} style={[styles.captureOption, { backgroundColor: colors.secondary }]}><Feather name="image" size={24} color={colors.primary} /><Text style={[styles.captureOptionText, { color: colors.foreground }]}>Choose image</Text><Text style={[styles.captureOptionDetail, { color: colors.mutedForeground }]}>Use a saved capture</Text></Pressable></View>}{captureLoading && <Notice>Recording image time and location…</Notice>}{captureError && <Notice tone="warning">{captureError}</Notice>}{imageUri && <View style={styles.previewBox}>{imageUri.startsWith('demo://') ? <View style={[styles.demoImage, { backgroundColor: colors.secondary }]}><Feather name="image" size={28} color={colors.primary} /><Text style={[styles.demoImageText, { color: colors.primary }]}>Captured demo image</Text></View> : <Image source={{ uri: imageUri }} style={styles.previewImage} />}<GhostButton label="Retake" icon="refresh-cw" onPress={() => { setImageUri(''); setCaptureMetadata(null); setCaptureError(''); setCameraOpen(false); setStep(2); }} /></View>}{validationMessage && <Notice tone="warning">{validationMessage}</Notice>}</View>}
     {step === 3 && assessment && <View style={styles.stepContent}><View style={[styles.scoreCard, { backgroundColor: assessment.usable ? '#e4f4ed' : '#fce9e9' }]}><View style={styles.scoreText}><Text style={[styles.scoreLabel, { color: assessment.usable ? '#146b4c' : colors.destructive }]}>IMAGE QUALITY</Text><Text style={[styles.scoreValue, { color: assessment.usable ? '#146b4c' : colors.destructive }]}>{assessment.score}/100</Text><Text style={[styles.scoreDetail, { color: colors.mutedForeground }]}>{assessment.explanation}</Text></View><View style={[styles.scoreRing, { borderColor: assessment.usable ? '#2c9b6a' : colors.destructive }]}><Feather name={assessment.usable ? 'check' : 'x'} size={27} color={assessment.usable ? '#2c9b6a' : colors.destructive} /></View></View><View style={styles.qualityList}>{[['Blur', assessment.blur], ['Brightness', assessment.brightness], ['Glare', assessment.glare], ['Strip position', assessment.stripPosition], ['Resolution', assessment.resolution]].map(([label, value]) => <View key={label} style={[styles.qualityRow, { borderBottomColor: colors.border }]}><Text style={[styles.qualityLabel, { color: colors.foreground }]}>{label}</Text><StatusPill label={value === 'pass' ? 'Pass' : 'Review'} tone={value === 'pass' ? 'green' : 'amber'} /></View>)}</View><Notice tone="warning">This is deterministic demo analysis, not medical-grade AI. Confirm the image is usable before continuing.</Notice></View>}
     {step === 4 && selectedKit && <View style={styles.stepContent}><Notice>Results are preliminary screening observations. Never convert them into a confirmed diagnosis.</Notice><SectionTitle title="Panel observations" eyebrow={selectedKit.name} />{selectedKit.panels.slice(0, 5).map((drug) => { const current = panels.find((panel) => panel.drug === drug)?.result ?? 'negative'; return <View key={drug} style={[styles.panelCard, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={styles.panelHeader}><Text style={[styles.panelName, { color: colors.foreground }]}>{drug}</Text><StatusPill label={`${Math.round((panels.find((panel) => panel.drug === drug)?.confidence ?? 0.94) * 100)}% confidence`} tone="teal" /></View><View style={styles.resultRow}>{(['negative', 'presumptive_positive', 'inconclusive'] as const).map((result) => <Pressable key={result} onPress={() => setPanels((currentPanels) => [...currentPanels.filter((panel) => panel.drug !== drug), { drug, result, confidence: result === 'negative' ? 0.94 : result === 'presumptive_positive' ? 0.76 : 0.42 }])} style={[styles.resultChoice, { backgroundColor: current === result ? result === 'negative' ? '#e4f4ed' : result === 'presumptive_positive' ? '#fff4da' : '#fce9e9' : colors.muted, borderColor: current === result ? result === 'negative' ? '#8dc8a8' : result === 'presumptive_positive' ? '#e4c978' : '#e4a5a5' : colors.border }]}><Text style={[styles.resultChoiceText, { color: current === result ? result === 'negative' ? '#146b4c' : result === 'presumptive_positive' ? '#805b16' : colors.destructive : colors.mutedForeground }]}>{result === 'presumptive_positive' ? 'Presumptive +' : result[0].toUpperCase() + result.slice(1)}</Text></Pressable>)}</View></View>})}<Field label="Operator notes (optional)" placeholder="Add context for the reviewer" value={notes} onChangeText={setNotes} multiline numberOfLines={3} /><Pressable onPress={() => setConfirmed(!confirmed)} style={styles.confirmRow}><View style={[styles.checkbox, { borderColor: confirmed ? colors.primary : colors.border, backgroundColor: confirmed ? colors.primary : colors.card }]}>{confirmed && <Feather name="check" size={14} color={colors.primaryForeground} />}</View><Text style={[styles.confirmText, { color: colors.foreground }]}>I understand this is a preliminary screening result.</Text></Pressable></View>}
   </ScrollView><View style={[styles.footer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>{step > 0 && <GhostButton label="Back" icon="arrow-left" onPress={back} style={styles.footerButton} />}{step < steps.length - 1 ? <PrimaryButton label="Continue" icon="arrow-right" onPress={next} style={styles.footerButton} /> : <PrimaryButton label={isOnline ? 'Save test' : 'Save draft offline'} icon="check" onPress={saveTest} style={styles.footerButton} />}</View></View></Screen>;

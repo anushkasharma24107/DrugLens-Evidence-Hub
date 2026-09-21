@@ -1,4 +1,4 @@
-# SafeTest API
+# Drug Lense API
 
 The OpenAPI source of truth is `lib/api-spec/openapi.yaml`. Regenerate the shared client and Zod output after changing it:
 

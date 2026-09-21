@@ -1,4 +1,4 @@
-# SafeTest data model
+# Drug Lense data model
 
 The production persistence layer should use the following collections or relational equivalents. Every record must carry `organizationId` and every query must scope by it.
 

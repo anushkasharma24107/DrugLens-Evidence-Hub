@@ -42,6 +42,12 @@ export type PanelResult = {
   note?: string;
 };
 
+export type ImageLocation = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+};
+
 export type DrugTest = {
   id: string;
   testReference: string;
@@ -59,6 +65,9 @@ export type DrugTest = {
   evidenceFileUrl?: string;
   notes?: string;
   location?: string;
+  imageTakenAt?: string;
+  imageLocation?: ImageLocation;
+  imagePlace?: string;
   consentStatus: string;
   syncStatus: 'synced' | 'pending_upload' | 'failed';
   createdAt: string;
@@ -87,7 +96,7 @@ type SafeTestContextValue = {
   demoMode: boolean;
   signIn: (email: string, password: string, role: Role) => Promise<void>;
   signOut: () => Promise<void>;
-  createSubject: (subjectCode: string, consentStatus: Subject['consentStatus']) => void;
+  createSubject: (subjectCode: string, consentStatus: Subject['consentStatus']) => Subject;
   createTest: (input: Omit<DrugTest, 'id' | 'testReference' | 'operatorName' | 'createdAt' | 'updatedAt' | 'syncStatus'>, offline?: boolean) => DrugTest;
   updateTest: (id: string, patch: Partial<DrugTest>) => void;
   reviewTest: (id: string, action: 'approve' | 'reject' | 'inconclusive', note?: string) => void;
@@ -99,10 +108,10 @@ const STORAGE_KEY = 'safetest.local.state.v1';
 const TOKEN_KEY = 'safetest.access-token';
 
 const demoUsers: Record<Role, User> = {
-  admin: { id: 'user-admin', name: 'Avery Morgan', email: 'admin@demo.safetest', role: 'admin', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
-  field_operator: { id: 'user-operator', name: 'Jordan Lee', email: 'operator@demo.safetest', role: 'field_operator', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
-  laboratory_reviewer: { id: 'user-reviewer', name: 'Dr. Casey Patel', email: 'reviewer@demo.safetest', role: 'laboratory_reviewer', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
-  doctor: { id: 'user-doctor', name: 'Dr. Sam Rivera', email: 'doctor@demo.safetest', role: 'doctor', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
+  admin: { id: 'user-admin', name: 'Avery Morgan', email: 'admin@demo.druglense', role: 'admin', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
+  field_operator: { id: 'user-operator', name: 'Jordan Lee', email: 'operator@demo.druglense', role: 'field_operator', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
+  laboratory_reviewer: { id: 'user-reviewer', name: 'Dr. Casey Patel', email: 'reviewer@demo.druglense', role: 'laboratory_reviewer', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
+  doctor: { id: 'user-doctor', name: 'Dr. Sam Rivera', email: 'doctor@demo.druglense', role: 'doctor', organizationId: 'org-northstar', organizationName: 'Northstar Community Health' },
 };
 
 const seedSubjects: Subject[] = [
@@ -225,6 +234,7 @@ export function SafeTestProvider({ children }: { children: React.ReactNode }) {
     const subject: Subject = { id: `subject-${Date.now()}`, subjectCode: subjectCode.toUpperCase(), consentStatus, qrStatus: 'active', testCount: 0 };
     setSubjects((current) => [subject, ...current]);
     addAudit('create', 'subject', subject.id);
+    return subject;
   }, [addAudit]);
 
   const createTest = useCallback((input: Omit<DrugTest, 'id' | 'testReference' | 'operatorName' | 'createdAt' | 'updatedAt' | 'syncStatus'>, offline = false) => {
@@ -243,7 +253,7 @@ export function SafeTestProvider({ children }: { children: React.ReactNode }) {
 
   const reviewTest = useCallback((id: string, action: 'approve' | 'reject' | 'inconclusive', note?: string) => {
     const status: TestStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'inconclusive';
-    const overallResult: OverallResult = action === 'inconclusive' ? 'inconclusive' : undefined as unknown as OverallResult;
+    const overallResult: OverallResult | undefined = action === 'inconclusive' ? 'inconclusive' : undefined;
     setTests((current) => current.map((test) => test.id === id ? { ...test, status, reviewerName: user?.name, reviewedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), notes: note || test.notes, ...(overallResult ? { overallResult } : {}) } : test));
     addAudit(`review_${action}`, 'drug_test', id);
   }, [addAudit, user?.name]);
